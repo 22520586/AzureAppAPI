@@ -1,19 +1,18 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import joblib
+import pandas as pd
 import numpy as np
-import os
 
-# Load model ngay khi khởi động (nhanh hơn load mỗi request)
-model_path = os.path.join(os.path.dirname(__file__), "dropout_model.pkl")
-model = joblib.load(model_path)
+# Load mô hình từ file .pkl
+model = joblib.load("dropout_model.pkl")  # Thay path nếu cần
 
-app = FastAPI(title="Dự đoán Sinh Viên Bỏ Học", version="1.0")
+app = FastAPI(title="Student Dropout Prediction API")
 
-
-class StudentInput(BaseModel):
-    TuitionFeesUpToDate: int
-    ScholarshipHolder: int
+# Định nghĩa schema input dựa trên features từ dataset của bạn
+class PredictionInput(BaseModel):
+    TuitionFeesUpToDate: int  # 1 or 0
+    ScholarshipHolder: int  # 1 or 0
     CurricularUnits1stSemGrade: float
     CurricularUnits1stSemApproved: int
     CurricularUnits2ndSemGrade: float
@@ -21,38 +20,34 @@ class StudentInput(BaseModel):
     PreviousQualification: int
     MaritalStatus: int
     AgeAtEnrollment: int
-    Gender: int
+    Gender: int  # 1 or 0
     Course: int
 
-
-@app.get("/")
-def home():
-    return {"message": "API dự đoán bỏ học đang chạy! Gửi POST đến /predict"}
-
-
+# Endpoint để dự đoán (POST request)
 @app.post("/predict")
-def predict(student: StudentInput):
-    # Chuyển input thành numpy array
-    data = np.array([[
-        student.TuitionFeesUpToDate,
-        student.ScholarshipHolder,
-        student.CurricularUnits1stSemGrade,
-        student.CurricularUnits1stSemApproved,
-        student.CurricularUnits2ndSemGrade,
-        student.CurricularUnits2ndSemApproved,
-        student.PreviousQualification,
-        student.MaritalStatus,
-        student.AgeAtEnrollment,
-        student.Gender,
-        student.Course
-    ]])
+def predict(input_data: PredictionInput):
+    try:
+        # Chuyển input thành DataFrame để predict
+        data_dict = input_data.dict()
+        df = pd.DataFrame([data_dict])  # Tạo DF từ dict
+        
+        # Dự đoán (0: Not Dropout, 1: Dropout)
+        prediction = model.predict(df)[0]
+        probability = model.predict_proba(df)[0][1]  # Xác suất Dropout
+        
+        result = "Dropout" if prediction == 1 else "Not Dropout"
+        return {
+            "prediction": result,
+            "probability": float(probability)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
 
-    pred = model.predict(data)[0]
-    prob = model.predict_proba(data)[0][1]  # Xác suất lớp 1 (Dropout)
+# Endpoint test (GET)
+@app.get("/")
+def root():
+    return {"message": "API is running. Use /predict for predictions."}
 
-    return {
-        "Prediction": "Dropout" if pred == 1 else "Not Dropout",
-        "Dropout_Probability": round(float(prob), 4),
-        "Risk_Level": "Cao" if prob > 0.7 else "Trung bình" if prob > 0.4 else "Thấp"
-    }
-
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
