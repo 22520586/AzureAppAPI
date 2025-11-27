@@ -51,7 +51,8 @@ def predict(student: StudentInput):
     prob = model.predict_proba(data)[0][1]  # Xác suất lớp 1 (Dropout)
 
     return {
-        "Prediction": "Bỏ học" if pred == 1 else "Không bỏ học",
+        "Prediction": "Dropout" if pred == 1 else "Not Dropout",
         "Dropout_Probability": round(float(prob), 4),
         "Risk_Level": "Cao" if prob > 0.7 else "Trung bình" if prob > 0.4 else "Thấp"
     }
+
